@@ -1,12 +1,17 @@
 /**
- * seed.js — Idempotent Database Seed Script
+ * seed.js — Database Seed Script with CLI Options & Flags
  *
  * Usage:
- *   node seed.js
- *   npm run seed (from the backend directory)
+ *   node seed.js [options]
+ *   npm run seed [-- [options]]
  *
- * Safely creates default admin/faculty accounts and sample published/draft courses
- * without duplicating records or deleting existing user data.
+ * Options:
+ *   --help, -h          Display this help message and exit
+ *   --courses-only      Seed sample course catalog only (skips users)
+ *   --users-only        Seed default admin and faculty test accounts only (skips courses)
+ *   --reset             Clear existing sample courses before re-seeding
+ *   --reset-users       Reset test admin and faculty accounts before re-seeding
+ *   --quiet, -q         Suppress informative log messages
  */
 
 require('dotenv').config();
@@ -18,45 +23,126 @@ const Course = require('./models/Course');
 
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/faculty_upgradation';
 
-async function seed() {
-  try {
-    console.log('Connecting to MongoDB for seeding...');
-    await mongoose.connect(MONGO_URI);
-    console.log('Connected successfully.');
+/**
+ * Parses CLI arguments.
+ * @param {string[]} argv
+ * @returns {object} options
+ */
+function parseArgs(argv = process.argv.slice(2)) {
+  const flags = new Set(argv);
+  return {
+    help: flags.has('--help') || flags.has('-h'),
+    coursesOnly: flags.has('--courses-only'),
+    usersOnly: flags.has('--users-only'),
+    reset: flags.has('--reset'),
+    resetUsers: flags.has('--reset-users'),
+    quiet: flags.has('--quiet') || flags.has('-q'),
+  };
+}
 
-    // ── 1. Seed Users ────────────────────────────────────────────────────────
+function printHelp() {
+  console.log(`
+Database Seed Script (seed.js)
+
+Usage:
+  node seed.js [options]
+  npm run seed [-- [options]]
+
+Options:
+  --help, -h          Display this help message and exit
+  --courses-only      Seed sample course catalog only (skips users)
+  --users-only        Seed default admin and faculty test accounts only (skips courses)
+  --reset             Clear existing sample courses before re-seeding
+  --reset-users       Reset test admin and faculty accounts before re-seeding
+  --quiet, -q         Suppress informative log messages
+
+Examples:
+  node seed.js --help
+  node seed.js --courses-only
+  node seed.js --users-only
+  node seed.js --courses-only --reset
+  node seed.js --quiet
+`);
+}
+
+async function seed(argv = process.argv.slice(2)) {
+  const options = parseArgs(argv);
+
+  if (options.help) {
+    printHelp();
+    return;
+  }
+
+  const log = options.quiet ? () => {} : console.log;
+
+  try {
+    log('Connecting to MongoDB for seeding...');
+    await mongoose.connect(MONGO_URI);
+    log('Connected successfully.');
+
     const salt = await bcrypt.genSalt(12);
 
-    let adminUser = await User.findOne({ email: 'admin@example.com' });
-    if (!adminUser) {
-      const hashedAdminPassword = await bcrypt.hash('admin123', salt);
-      adminUser = await User.create({
-        name: 'System Administrator',
-        email: 'admin@example.com',
-        password: hashedAdminPassword,
-        role: 'admin',
-        isActive: true,
-      });
-      console.log('✅ Created default admin user: admin@example.com / admin123');
-    } else {
-      console.log('ℹ️ Admin user already exists: admin@example.com');
+    // ── Reset users if requested ─────────────────────────────────────────────
+    if (options.resetUsers) {
+      await User.deleteMany({ email: { $in: ['admin@example.com', 'faculty@example.com'] } });
+      log('Cleared existing sample users (--reset-users).');
     }
 
-    let facultyUser = await User.findOne({ email: 'faculty@example.com' });
-    if (!facultyUser) {
-      const hashedFacultyPassword = await bcrypt.hash('faculty123', salt);
-      facultyUser = await User.create({
-        name: 'Dr. Ramesh Kumar',
-        email: 'faculty@example.com',
-        password: hashedFacultyPassword,
-        role: 'faculty',
-        department: 'Computer Science & Engineering',
-        designation: 'Associate Professor',
-        isActive: true,
-      });
-      console.log('✅ Created default faculty user: faculty@example.com / faculty123');
+    // ── 1. Seed Users (unless --courses-only) ─────────────────────────────────
+    let adminUser = await User.findOne({ email: 'admin@example.com' });
+
+    if (!options.coursesOnly) {
+      if (!adminUser) {
+        const hashedAdminPassword = await bcrypt.hash('admin123', salt);
+        adminUser = await User.create({
+          name: 'System Administrator',
+          email: 'admin@example.com',
+          password: hashedAdminPassword,
+          role: 'admin',
+          isActive: true,
+        });
+        log('✅ Created default admin user: admin@example.com / admin123');
+      } else {
+        log('ℹ️ Admin user already exists: admin@example.com');
+      }
+
+      let facultyUser = await User.findOne({ email: 'faculty@example.com' });
+      if (!facultyUser) {
+        const hashedFacultyPassword = await bcrypt.hash('faculty123', salt);
+        facultyUser = await User.create({
+          name: 'Dr. Ramesh Kumar',
+          email: 'faculty@example.com',
+          password: hashedFacultyPassword,
+          role: 'faculty',
+          department: 'Computer Science & Engineering',
+          designation: 'Associate Professor',
+          isActive: true,
+        });
+        log('✅ Created default faculty user: faculty@example.com / faculty123');
+      } else {
+        log('ℹ️ Faculty user already exists: faculty@example.com');
+      }
     } else {
-      console.log('ℹ️ Faculty user already exists: faculty@example.com');
+      log('Skipping user seeding (--courses-only).');
+      // If admin doesn't exist yet, create one to ensure createdBy reference is valid
+      if (!adminUser) {
+        const hashedAdminPassword = await bcrypt.hash('admin123', salt);
+        adminUser = await User.create({
+          name: 'System Administrator',
+          email: 'admin@example.com',
+          password: hashedAdminPassword,
+          role: 'admin',
+          isActive: true,
+        });
+        log('✅ Created required admin user for course ownership: admin@example.com');
+      }
+    }
+
+    // ── Stop here if --users-only ─────────────────────────────────────────────
+    if (options.usersOnly) {
+      log('Skipping course seeding (--users-only).');
+      log('User seeding complete!');
+      return;
     }
 
     // ── 2. Seed Sample Courses ───────────────────────────────────────────────
@@ -230,26 +316,37 @@ async function seed() {
       },
     ];
 
+    // Clear existing sample courses if --reset is requested
+    if (options.reset) {
+      const titles = sampleCourses.map((c) => c.title);
+      await Course.deleteMany({ title: { $in: titles } });
+      log('Cleared existing sample courses (--reset).');
+    }
+
     let createdCount = 0;
     for (const courseData of sampleCourses) {
       const exists = await Course.findOne({ title: courseData.title });
       if (!exists) {
         await Course.create(courseData);
         createdCount++;
-        console.log(`✅ Seeded course: "${courseData.title}" (${courseData.isPublished ? 'Published' : 'Draft'})`);
+        log(`✅ Seeded course: "${courseData.title}" (${courseData.isPublished ? 'Published' : 'Draft'})`);
       } else {
-        console.log(`ℹ️ Course already exists: "${courseData.title}"`);
+        log(`ℹ️ Course already exists: "${courseData.title}"`);
       }
     }
 
-    console.log(`Seeding complete! ${createdCount} new course(s) created.`);
+    log(`Seeding complete! ${createdCount} new course(s) created.`);
   } catch (error) {
     console.error('❌ Seeding failed:', error);
     process.exitCode = 1;
   } finally {
     await mongoose.disconnect();
-    console.log('Disconnected from MongoDB.');
+    log('Disconnected from MongoDB.');
   }
 }
 
-seed();
+module.exports = { seed, parseArgs, printHelp };
+
+if (require.main === module) {
+  seed();
+}
