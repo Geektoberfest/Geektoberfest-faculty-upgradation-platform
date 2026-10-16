@@ -18,10 +18,15 @@ const {
   getEnrollmentById,
   updateProgress,
   getEnrollmentCertificate,
+  getAllEnrollmentsAdmin,
 } = require('../controllers/enrollmentController');
 const { protect } = require('../middlewares/authMiddleware');
+const { authorise } = require('../middlewares/roleMiddleware');
 
 const router = express.Router();
+
+// Admin: all enrollments across faculty — must come before /:id
+router.get('/admin/all', protect, authorise('admin'), getAllEnrollmentsAdmin);
 
 // Enroll in a course — courseId as path param to keep semantics clear
 router.post('/:courseId', protect, enrollInCourse);

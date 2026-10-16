@@ -294,10 +294,40 @@ const getEnrollmentCertificate = async (req, res, next) => {
   }
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// @desc    Get all institutional enrollments for admin oversight
+// @route   GET /api/enrollments/admin/all
+// @access  Protected (admin)
+// ─────────────────────────────────────────────────────────────────────────────
+const getAllEnrollmentsAdmin = async (req, res, next) => {
+  try {
+    const { status } = req.query;
+    const filter = {};
+
+    if (status && status !== 'All') {
+      filter.status = status;
+    }
+
+    const enrollments = await Enrollment.find(filter)
+      .populate('faculty', 'name email department designation')
+      .populate('course', 'title credits category difficulty')
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      success: true,
+      count: enrollments.length,
+      enrollments,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   enrollInCourse,
   getMyEnrollments,
   getEnrollmentById,
   updateProgress,
   getEnrollmentCertificate,
+  getAllEnrollmentsAdmin,
 };
