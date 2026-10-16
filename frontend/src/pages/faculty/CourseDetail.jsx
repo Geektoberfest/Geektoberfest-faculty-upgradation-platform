@@ -12,6 +12,7 @@ import { useParams, Link } from 'react-router-dom';
 import AppLayout from '../../components/common/AppLayout';
 import { getCourseById } from '../../api/courseApi';
 import { enrollInCourse, getMyEnrollments } from '../../api/enrollmentApi';
+import { useToast } from '../../context/ToastContext';
 
 const DIFFICULTY_COLOR = {
   beginner: 'var(--color-success)',
@@ -79,6 +80,7 @@ function ModuleItem({ mod, index }) {
 
 function CourseDetail() {
   const { id } = useParams();
+  const { toast } = useToast();
 
   const [course, setCourse] = useState(null);
   const [alreadyEnrolled, setAlreadyEnrolled] = useState(false);
@@ -131,16 +133,22 @@ function CourseDetail() {
     try {
       const res = await enrollInCourse(id);
       setAlreadyEnrolled(true);
-      setSuccessMsg(res.data.message || 'Successfully enrolled!');
+      const msg = res.data.message || 'Successfully enrolled!';
+      setSuccessMsg(msg);
+      toast.success(msg);
     } catch (err) {
       const status = err.response?.status;
       const msg = err.response?.data?.message;
 
       if (status === 409) {
         setAlreadyEnrolled(true);
-        setSuccessMsg('You are already enrolled in this course.');
+        const warning = 'You are already enrolled in this course.';
+        setSuccessMsg(warning);
+        toast.info(warning);
       } else {
-        setError(msg || 'Enrollment failed. Please try again.');
+        const errorMsg = msg || 'Enrollment failed. Please try again.';
+        setError(errorMsg);
+        toast.error(errorMsg);
       }
     } finally {
       setEnrolling(false);
