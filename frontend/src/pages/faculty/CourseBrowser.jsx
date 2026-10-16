@@ -39,9 +39,10 @@ function CourseThumbnail({ thumbnail, title, category }) {
     <div
       className="h-32 w-full rounded-t-lg flex items-center justify-center p-4 relative overflow-hidden"
       style={{ background: 'linear-gradient(135deg, rgba(79,70,229,0.3), rgba(6,182,212,0.2))' }}
+      aria-hidden="true"
     >
       <div className="text-center z-10">
-        <span className="text-3xl">🎓</span>
+        <span className="text-3xl" role="img" aria-hidden="true">🎓</span>
         <p className="text-xs font-semibold mt-1" style={{ color: 'var(--color-text-muted)' }}>
           {category || 'Faculty Course'}
         </p>
@@ -52,77 +53,86 @@ function CourseThumbnail({ thumbnail, title, category }) {
 
 function CourseCard({ course }) {
   const diffColor = DIFFICULTY_COLOR[course.difficulty] || 'var(--color-text-muted)';
+  const accessibleLabel = `View course: ${course.title}, ${course.credits ? `${course.credits} credits` : '0 credits'}, ${course.difficulty || 'unspecified'} level`;
 
   return (
-    <Link
-      to={`/courses/${course._id}`}
-      style={{ textDecoration: 'none', color: 'inherit' }}
+    <article
+      role="article"
+      aria-label={course.title}
+      className="h-full"
     >
-      <div
-        className="glass-card flex flex-col h-full transition-all duration-200 hover:-translate-y-1 hover:shadow-lg cursor-pointer overflow-hidden"
-        style={{ borderTop: `3px solid var(--color-primary)` }}
+      <Link
+        to={`/courses/${course._id}`}
+        aria-label={accessibleLabel}
+        className="block h-full rounded-2xl"
+        style={{ textDecoration: 'none', color: 'inherit' }}
       >
-        <CourseThumbnail
-          thumbnail={course.thumbnail}
-          title={course.title}
-          category={course.category}
-        />
+        <div
+          className="glass-card flex flex-col h-full transition-all duration-200 hover:-translate-y-1 hover:shadow-lg cursor-pointer overflow-hidden"
+          style={{ borderTop: `3px solid var(--color-primary)` }}
+        >
+          <CourseThumbnail
+            thumbnail={course.thumbnail}
+            title={course.title}
+            category={course.category}
+          />
 
-        <div className="p-5 flex flex-col flex-1 gap-3">
-          {/* Category + difficulty row */}
-          <div className="flex items-center justify-between">
-            <span
-              className="text-xs font-semibold px-2 py-0.5 rounded-full"
-              style={{ background: 'rgba(99,102,241,0.15)', color: 'var(--color-primary-light)' }}
-            >
-              {course.category || 'General'}
-            </span>
-            <span
-              className="text-xs font-semibold capitalize px-2 py-0.5 rounded-full"
-              style={{ background: `${diffColor}20`, color: diffColor }}
-            >
-              {course.difficulty}
-            </span>
-          </div>
-
-          {/* Title */}
-          <h3 className="text-base font-semibold leading-snug" style={{ color: 'var(--color-text)' }}>
-            {course.title}
-          </h3>
-
-          {/* Description */}
-          <p
-            className="text-sm flex-1 line-clamp-3"
-            style={{ color: 'var(--color-text-muted)', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}
-          >
-            {course.description || 'No description available.'}
-          </p>
-
-          {/* Footer meta */}
-          <div
-            className="flex items-center gap-4 pt-3 text-xs mt-auto"
-            style={{ borderTop: '1px solid var(--color-border)', color: 'var(--color-text-muted)' }}
-          >
-            {course.instructor && (
-              <span className="flex items-center gap-1 truncate">
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                </svg>
-                <span className="truncate">{course.instructor}</span>
+          <div className="p-5 flex flex-col flex-1 gap-3">
+            {/* Category + difficulty row */}
+            <div className="flex items-center justify-between">
+              <span
+                className="text-xs font-semibold px-2 py-0.5 rounded-full"
+                style={{ background: 'rgba(99,102,241,0.15)', color: 'var(--color-primary-light)' }}
+              >
+                {course.category || 'General'}
               </span>
-            )}
-            {course.credits > 0 && (
-              <span className="flex items-center gap-1 ml-auto font-semibold shrink-0" style={{ color: 'var(--color-accent)' }}>
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                {course.credits} credits
+              <span
+                className="text-xs font-semibold capitalize px-2 py-0.5 rounded-full"
+                style={{ background: `${diffColor}20`, color: diffColor }}
+              >
+                {course.difficulty}
               </span>
-            )}
+            </div>
+
+            {/* Title */}
+            <h3 className="text-base font-semibold leading-snug" style={{ color: 'var(--color-text)' }}>
+              {course.title}
+            </h3>
+
+            {/* Description */}
+            <p
+              className="text-sm flex-1 line-clamp-3"
+              style={{ color: 'var(--color-text-muted)', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}
+            >
+              {course.description || 'No description available.'}
+            </p>
+
+            {/* Footer meta */}
+            <div
+              className="flex items-center gap-4 pt-3 text-xs mt-auto"
+              style={{ borderTop: '1px solid var(--color-border)', color: 'var(--color-text-muted)' }}
+            >
+              {course.instructor && (
+                <span className="flex items-center gap-1 truncate">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                  <span className="truncate">{course.instructor}</span>
+                </span>
+              )}
+              {course.credits > 0 && (
+                <span className="flex items-center gap-1 ml-auto font-semibold shrink-0" style={{ color: 'var(--color-accent)' }}>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  {course.credits} credits
+                </span>
+              )}
+            </div>
           </div>
         </div>
-      </div>
-    </Link>
+      </Link>
+    </article>
   );
 }
 
@@ -232,6 +242,7 @@ function CourseBrowser() {
             <input
               id="course-search"
               type="text"
+              aria-label="Search courses by title, description, or instructor"
               placeholder="Search by title, description, or instructor…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -242,6 +253,7 @@ function CourseBrowser() {
 
           <select
             id="course-category-filter"
+            aria-label="Filter courses by category"
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value)}
             className="input-field sm:w-44"
@@ -253,6 +265,7 @@ function CourseBrowser() {
 
           <select
             id="course-difficulty-filter"
+            aria-label="Filter courses by difficulty"
             value={difficultyFilter}
             onChange={(e) => setDifficultyFilter(e.target.value)}
             className="input-field sm:w-40"
@@ -309,7 +322,7 @@ function CourseBrowser() {
                 Showing {filtered.length} of {courses.length} course{courses.length !== 1 ? 's' : ''}
               </p>
             </div>
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5" role="region" aria-label="Course list">
               {filtered.map((course) => (
                 <CourseCard key={course._id} course={course} />
               ))}
@@ -319,6 +332,7 @@ function CourseBrowser() {
               <div className="flex items-center justify-between mt-8 pt-4 border-t border-slate-700/50">
                 <button
                   id="pagination-prev"
+                  aria-label="Go to previous page"
                   className="btn-secondary text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                   onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                   disabled={currentPage <= 1 || loading}
@@ -331,6 +345,7 @@ function CourseBrowser() {
                 </div>
                 <button
                   id="pagination-next"
+                  aria-label="Go to next page"
                   className="btn-secondary text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                   onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                   disabled={currentPage >= totalPages || loading}
