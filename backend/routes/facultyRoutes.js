@@ -7,13 +7,21 @@
  */
 
 const express = require('express');
-const { getProfile, updateProfile, getFacultyList } = require('../controllers/facultyController');
+const {
+  getProfile,
+  updateProfile,
+  getFacultyList,
+  getAdminFacultyList,
+  updateFacultyStatus,
+} = require('../controllers/facultyController');
 const { protect } = require('../middlewares/authMiddleware');
 const { authorise } = require('../middlewares/roleMiddleware');
 
 const router = express.Router();
 
 router.get('/', protect, authorise('admin'), getFacultyList);
+router.get('/admin/list', protect, authorise('admin'), getAdminFacultyList);
+router.put('/admin/:id/status', protect, authorise('admin'), updateFacultyStatus);
 router.get('/profile', protect, getProfile);
 router.put('/profile', protect, updateProfile);
 
