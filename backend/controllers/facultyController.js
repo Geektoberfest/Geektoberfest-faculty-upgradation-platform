@@ -104,5 +104,70 @@ const getFacultyList = async (req, res, next) => {
   }
 };
 
-module.exports = { getProfile, updateProfile, getFacultyList };
+// ─────────────────────────────────────────────────────────────────────────────
+// @desc    Get detailed list of all faculty members for admin management view
+// @route   GET /api/faculty/admin/list
+// @access  Protected (admin)
+// ─────────────────────────────────────────────────────────────────────────────
+const getAdminFacultyList = async (req, res, next) => {
+  try {
+    const faculty = await User.find({ role: 'faculty' })
+      .select('-password')
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      success: true,
+      count: faculty.length,
+      faculty,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// @desc    Update activation status of a faculty member
+// @route   PUT /api/faculty/admin/:id/status
+// @access  Protected (admin)
+// ─────────────────────────────────────────────────────────────────────────────
+const updateFacultyStatus = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { isActive } = req.body;
+
+    if (typeof isActive !== 'boolean') {
+      return res.status(400).json({
+        success: false,
+        message: 'isActive field must be a boolean (true or false)',
+      });
+    }
+
+    const user = await User.findOne({ _id: id, role: 'faculty' }).select('-password');
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'Faculty member not found',
+      });
+    }
+
+    user.isActive = isActive;
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: `Faculty account ${user.isActive ? 'activated' : 'deactivated'} successfully`,
+      faculty: user,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = {
+  getProfile,
+  updateProfile,
+  getFacultyList,
+  getAdminFacultyList,
+  updateFacultyStatus,
+};
 

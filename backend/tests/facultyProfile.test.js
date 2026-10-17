@@ -22,9 +22,13 @@ describe('Faculty Profile Endpoint Tests (GET/PUT /api/faculty/profile)', () => 
 
   const facultyUserId = new mongoose.Types.ObjectId();
   const facultyToken = jwt.sign({ id: facultyUserId.toString() }, JWT_SECRET);
+  const adminUserId = new mongoose.Types.ObjectId();
+  const adminToken = jwt.sign({ id: adminUserId.toString() }, JWT_SECRET);
 
   let originalUserFindById;
   let originalUserFindByIdAndUpdate;
+  let originalUserFind;
+  let originalUserFindOne;
 
   before(async () => {
     await new Promise((resolve) => {
@@ -38,11 +42,15 @@ describe('Faculty Profile Endpoint Tests (GET/PUT /api/faculty/profile)', () => 
 
     originalUserFindById = User.findById;
     originalUserFindByIdAndUpdate = User.findByIdAndUpdate;
+    originalUserFind = User.find;
+    originalUserFindOne = User.findOne;
   });
 
   after(async () => {
     User.findById = originalUserFindById;
     User.findByIdAndUpdate = originalUserFindByIdAndUpdate;
+    User.find = originalUserFind;
+    User.findOne = originalUserFindOne;
     if (server) {
       await new Promise((resolve) => server.close(resolve));
     }
@@ -186,6 +194,148 @@ describe('Faculty Profile Endpoint Tests (GET/PUT /api/faculty/profile)', () => 
     const body = await res.json();
     assert.equal(body.success, false);
     assert.match(body.message, /No updatable fields provided/i);
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Admin Faculty Management Tests (GET /api/faculty/admin/list & PUT /:id/status)
+  // ───────────────────────────────────────────────────────────────────────────
+  it('rejects unauthenticated GET /api/faculty/admin/list with 401', async () => {
+    const res = await fetch(`${baseUrl}/api/faculty/admin/list`);
+    assert.equal(res.status, 401);
+  });
+
+  it('rejects non-admin GET /api/faculty/admin/list with 403', async () => {
+    User.findById = function () {
+      return {
+        select: () => Promise.resolve({ _id: facultyUserId, role: 'faculty', isActive: true }),
+      };
+    };
+
+    const res = await fetch(`${baseUrl}/api/faculty/admin/list`, {
+      headers: { Authorization: `Bearer ${facultyToken}` },
+    });
+    assert.equal(res.status, 403);
+  });
+
+  it('allows admin to fetch full faculty list (GET /api/faculty/admin/list)', async () => {
+    User.findById = function () {
+      return {
+        select: () => Promise.resolve({ _id: adminUserId, role: 'admin', isActive: true }),
+      };
+    };
+
+    const mockFaculty = [
+      { _id: new mongoose.Types.ObjectId(), name: 'Prof. A', email: 'a@uni.edu', role: 'faculty', isActive: true },
+      { _id: new mongoose.Types.ObjectId(), name: 'Prof. B', email: 'b@uni.edu', role: 'faculty', isActive: false },
+    ];
+
+    User.find = function () {
+      return {
+        select: () => ({
+          sort: () => Promise.resolve(mockFaculty),
+        }),
+      };
+    };
+
+    const res = await fetch(`${baseUrl}/api/faculty/admin/list`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.success, true);
+    assert.equal(body.count, 2);
+    assert.equal(body.faculty.length, 2);
+  });
+
+  it('rejects non-boolean isActive in PUT /api/faculty/admin/:id/status with 400', async () => {
+    User.findById = function () {
+      return {
+        select: () => Promise.resolve({ _id: adminUserId, role: 'admin', isActive: true }),
+      };
+    };
+
+    const targetId = new mongoose.Types.ObjectId().toString();
+    const res = await fetch(`${baseUrl}/api/faculty/admin/${targetId}/status`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ isActive: 'invalid-string' }),
+    });
+
+    assert.equal(res.status, 400);
+    const body = await res.json();
+    assert.equal(body.success, false);
+    assert.match(body.message, /must be a boolean/i);
+  });
+
+  it('returns 404 when target faculty does not exist in PUT /api/faculty/admin/:id/status', async () => {
+    User.findById = function () {
+      return {
+        select: () => Promise.resolve({ _id: adminUserId, role: 'admin', isActive: true }),
+      };
+    };
+
+    User.findOne = function () {
+      return {
+        select: () => Promise.resolve(null),
+      };
+    };
+
+    const targetId = new mongoose.Types.ObjectId().toString();
+    const res = await fetch(`${baseUrl}/api/faculty/admin/${targetId}/status`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ isActive: false }),
+    });
+
+    assert.equal(res.status, 404);
+    const body = await res.json();
+    assert.equal(body.success, false);
+    assert.match(body.message, /not found/i);
+  });
+
+  it('admin successfully updates faculty isActive status to false (deactivation)', async () => {
+    User.findById = function () {
+      return {
+        select: () => Promise.resolve({ _id: adminUserId, role: 'admin', isActive: true }),
+      };
+    };
+
+    const targetUser = {
+      _id: facultyUserId,
+      name: 'Dr. Ramesh Kumar',
+      role: 'faculty',
+      isActive: true,
+      save: async function () {
+        return this;
+      },
+    };
+
+    User.findOne = function () {
+      return {
+        select: () => Promise.resolve(targetUser),
+      };
+    };
+
+    const res = await fetch(`${baseUrl}/api/faculty/admin/${facultyUserId}/status`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ isActive: false }),
+    });
+
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.success, true);
+    assert.equal(body.faculty.isActive, false);
+    assert.match(body.message, /deactivated successfully/i);
   });
 
 });
