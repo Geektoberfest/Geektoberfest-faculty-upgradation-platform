@@ -7,10 +7,11 @@
  * skeleton loaders, error retry, and thumbnail fallback image handling.
  */
 
-import { useState, useEffect, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import AppLayout from '../../components/common/AppLayout';
 import { getCourses } from '../../api/courseApi';
+import useDebounce from '../../hooks/useDebounce';
 
 const DIFFICULTY_COLOR = {
   beginner: 'var(--color-success)',
@@ -149,62 +150,134 @@ function CourseSkeleton() {
 }
 
 function CourseBrowser() {
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // URL search params as single source of truth
+  const urlSearch = searchParams.get('search') || '';
+  const categoryFilter = searchParams.get('category') || 'All';
+  const difficultyFilter = searchParams.get('difficulty') || 'All';
+  const currentPage = parseInt(searchParams.get('page'), 10) || 1;
+
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [search, setSearch] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('All');
-  const [difficultyFilter, setDifficultyFilter] = useState('All');
-  const [currentPage, setCurrentPage] = useState(1);
+  const [search, setSearch] = useState(urlSearch);
   const [totalPages, setTotalPages] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
 
-  const fetchCourses = async (page = currentPage) => {
+  // Debounce search query by 300ms
+  const debouncedSearch = useDebounce(search, 300);
+
+  // Synchronize debounced search to URL query parameter
+  useEffect(() => {
+    setSearchParams((prev) => {
+      const currentParam = prev.get('search') || '';
+      const trimmed = debouncedSearch.trim();
+      if (currentParam === trimmed) return prev;
+
+      const next = new URLSearchParams(prev);
+      if (trimmed) {
+        next.set('search', trimmed);
+      } else {
+        next.delete('search');
+      }
+      next.delete('page');
+      return next;
+    }, { replace: true });
+  }, [debouncedSearch, setSearchParams]);
+
+  // Synchronize local input state if URL search param changes externally (e.g. Back/Forward)
+  useEffect(() => {
+    setSearch(urlSearch);
+  }, [urlSearch]);
+
+  const fetchCourses = useCallback(() => {
     setLoading(true);
     setError('');
-    try {
-      const params = { page, limit: 9 };
-      if (search.trim()) params.search = search.trim();
-      if (categoryFilter !== 'All') params.category = categoryFilter;
-      if (difficultyFilter !== 'All') params.difficulty = difficultyFilter;
 
-      const res = await getCourses(params);
-      setCourses(res.data.courses || []);
-      setCurrentPage(res.data.currentPage || page);
-      setTotalPages(res.data.totalPages || 1);
-      setTotalCount(res.data.total ?? res.data.count ?? (res.data.courses || []).length);
-    } catch {
-      setError('Failed to load courses from server. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
+    const params = { page: currentPage, limit: 9 };
+    if (urlSearch.trim()) params.search = urlSearch.trim();
+    if (categoryFilter !== 'All') params.category = categoryFilter;
+    if (difficultyFilter !== 'All') params.difficulty = difficultyFilter;
+
+    getCourses(params)
+      .then((res) => {
+        setCourses(res.data.courses || []);
+        setTotalPages(res.data.totalPages || 1);
+      })
+      .catch(() => {
+        setError('Failed to load courses from server. Please try again.');
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, [urlSearch, categoryFilter, difficultyFilter, currentPage]);
 
   useEffect(() => {
-    fetchCourses(currentPage);
-  }, [currentPage, categoryFilter, difficultyFilter]);
+    fetchCourses();
+  }, [fetchCourses]);
 
-  const handleSearch = (e) => {
-    e.preventDefault();
-    setCurrentPage(1);
-    fetchCourses(1);
+  const handleCategoryChange = (e) => {
+    const val = e.target.value;
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (val && val !== 'All') {
+        next.set('category', val);
+      } else {
+        next.delete('category');
+      }
+      next.delete('page');
+      return next;
+    });
   };
 
+  const handleDifficultyChange = (e) => {
+    const val = e.target.value;
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (val && val !== 'All') {
+        next.set('difficulty', val);
+      } else {
+        next.delete('difficulty');
+      }
+      next.delete('page');
+      return next;
+    });
+  };
 
-  // Categories
+  const handlePageChange = (newPage) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (newPage > 1) {
+        next.set('page', newPage.toString());
+      } else {
+        next.delete('page');
+      }
+      return next;
+    });
+  };
+
+  const handleClearFilters = () => {
+    setSearch('');
+    setSearchParams({});
+  };
+
+  // Categories (including any preselected category from URL)
   const categories = useMemo(() => {
-    const cats = [...new Set(courses.map((c) => c.category || 'General'))];
-    return ['All', ...cats.sort()];
-  }, [courses]);
+    const catSet = new Set(courses.map((c) => c.category || 'General'));
+    if (categoryFilter && categoryFilter !== 'All') {
+      catSet.add(categoryFilter);
+    }
+    return ['All', ...[...catSet].sort()];
+  }, [courses, categoryFilter]);
 
   // Filtered
   const filtered = useMemo(() => {
     return courses.filter((c) => {
       const matchesSearch =
-        !search ||
-        c.title.toLowerCase().includes(search.toLowerCase()) ||
-        (c.description || '').toLowerCase().includes(search.toLowerCase()) ||
-        (c.instructor || '').toLowerCase().includes(search.toLowerCase());
+        !urlSearch ||
+        c.title.toLowerCase().includes(urlSearch.toLowerCase()) ||
+        (c.description || '').toLowerCase().includes(urlSearch.toLowerCase()) ||
+        (c.instructor || '').toLowerCase().includes(urlSearch.toLowerCase());
 
       const matchesCategory =
         categoryFilter === 'All' || (c.category || 'General') === categoryFilter;
@@ -214,7 +287,7 @@ function CourseBrowser() {
 
       return matchesSearch && matchesCategory && matchesDifficulty;
     });
-  }, [courses, search, categoryFilter, difficultyFilter]);
+  }, [courses, urlSearch, categoryFilter, difficultyFilter]);
 
   return (
     <AppLayout>
@@ -255,7 +328,7 @@ function CourseBrowser() {
             id="course-category-filter"
             aria-label="Filter courses by category"
             value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
+            onChange={handleCategoryChange}
             className="input-field sm:w-44"
           >
             {categories.map((cat) => (
@@ -267,7 +340,7 @@ function CourseBrowser() {
             id="course-difficulty-filter"
             aria-label="Filter courses by difficulty"
             value={difficultyFilter}
-            onChange={(e) => setDifficultyFilter(e.target.value)}
+            onChange={handleDifficultyChange}
             className="input-field sm:w-40"
           >
             <option value="All">All Difficulties</option>
@@ -309,7 +382,7 @@ function CourseBrowser() {
             {(search || categoryFilter !== 'All' || difficultyFilter !== 'All') && (
               <button
                 className="btn-secondary mt-5 text-xs cursor-pointer"
-                onClick={() => { setSearch(''); setCategoryFilter('All'); setDifficultyFilter('All'); }}
+                onClick={handleClearFilters}
               >
                 Clear all filters
               </button>
@@ -334,7 +407,7 @@ function CourseBrowser() {
                   id="pagination-prev"
                   aria-label="Go to previous page"
                   className="btn-secondary text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
                   disabled={currentPage <= 1 || loading}
                 >
                   ← Previous
@@ -347,7 +420,7 @@ function CourseBrowser() {
                   id="pagination-next"
                   aria-label="Go to next page"
                   className="btn-secondary text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  onClick={() => handlePageChange(Math.min(totalPages, currentPage + 1))}
                   disabled={currentPage >= totalPages || loading}
                 >
                   Next →
