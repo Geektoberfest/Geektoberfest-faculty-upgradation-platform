@@ -16,6 +16,70 @@ import { getCourses, createCourse, updateCourse, deleteCourse } from '../../api/
 
 const DIFFICULTY_OPTIONS = ['beginner', 'intermediate', 'advanced'];
 
+/**
+ * Validates and sanitizes URLs entered in the course form.
+ * - Automatically prepends 'https://' to domain-only strings (e.g. www.example.com or example.com)
+ * - Enforces http:// or https:// protocol
+ * - Strictly rejects dangerous protocols (e.g. javascript:, data:, vbscript:)
+ *
+ * @param {string} rawUrl
+ * @returns {{ isValid: boolean, sanitizedUrl: string, error?: string }}
+ */
+function sanitizeAndValidateUrl(rawUrl) {
+  const trimmed = (rawUrl || '').trim();
+  if (!trimmed) {
+    return { isValid: true, sanitizedUrl: '' };
+  }
+
+  const lower = trimmed.toLowerCase();
+  if (lower.startsWith('javascript:') || lower.startsWith('data:') || lower.startsWith('vbscript:')) {
+    return {
+      isValid: false,
+      sanitizedUrl: trimmed,
+      error: 'URLs must start with http:// or https://',
+    };
+  }
+
+  let formatted = trimmed;
+  if (!/^https?:\/\//i.test(formatted)) {
+    // If it has another scheme like ftp://, file://, mailto:
+    if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//i.test(formatted)) {
+      return {
+        isValid: false,
+        sanitizedUrl: formatted,
+        error: 'URLs must start with http:// or https://',
+      };
+    }
+    // Automatically prepend https:// to domain-only strings (e.g. example.com, www.example.com)
+    formatted = `https://${formatted}`;
+  }
+
+  try {
+    const parsed = new URL(formatted);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return {
+        isValid: false,
+        sanitizedUrl: formatted,
+        error: 'URLs must start with http:// or https://',
+      };
+    }
+    if (!parsed.hostname || (parsed.hostname !== 'localhost' && !parsed.hostname.includes('.'))) {
+      return {
+        isValid: false,
+        sanitizedUrl: formatted,
+        error: 'URLs must start with http:// or https:// and include a valid domain name.',
+      };
+    }
+    return { isValid: true, sanitizedUrl: formatted };
+  } catch {
+    return {
+      isValid: false,
+      sanitizedUrl: formatted,
+      error: 'URLs must start with http:// or https://',
+    };
+  }
+}
+
 const INITIAL_COURSE_FORM = {
   title: '',
   description: '',
@@ -179,18 +243,59 @@ function CourseManagement() {
       }
     }
 
-    const payload = {
-      ...form,
-      title: form.title.trim(),
-      tags: form.tags ? form.tags.split(',').map((t) => t.trim()).filter(Boolean) : [],
-      duration: Number(form.duration) || 0,
-      credits: Number(form.credits) || 0,
-      modules: form.modules.map((m, idx) => ({
+    // Validate and sanitize Thumbnail Image URL
+    let sanitizedThumbnail = '';
+    if (form.thumbnail && form.thumbnail.trim()) {
+      const thumbValidation = sanitizeAndValidateUrl(form.thumbnail);
+      if (!thumbValidation.isValid) {
+        setFormError(`Thumbnail URL: ${thumbValidation.error}`);
+        return;
+      }
+      sanitizedThumbnail = thumbValidation.sanitizedUrl;
+    }
+
+    // Validate and sanitize External Resource URL
+    let sanitizedExternalUrl = '';
+    if (form.externalUrl && form.externalUrl.trim()) {
+      const extValidation = sanitizeAndValidateUrl(form.externalUrl);
+      if (!extValidation.isValid) {
+        setFormError(`External Resource URL: ${extValidation.error}`);
+        return;
+      }
+      sanitizedExternalUrl = extValidation.sanitizedUrl;
+    }
+
+    // Validate module resource URLs
+    const sanitizedModules = [];
+    for (let i = 0; i < form.modules.length; i++) {
+      const m = form.modules[i];
+      let modResourceUrl = '';
+      if (m.resourceUrl && m.resourceUrl.trim()) {
+        const modValidation = sanitizeAndValidateUrl(m.resourceUrl);
+        if (!modValidation.isValid) {
+          setFormError(`Module ${i + 1} Resource URL: ${modValidation.error}`);
+          return;
+        }
+        modResourceUrl = modValidation.sanitizedUrl;
+      }
+      sanitizedModules.push({
         ...m,
         title: m.title.trim(),
         duration: Number(m.duration) || 0,
-        order: idx + 1,
-      })),
+        order: i + 1,
+        resourceUrl: modResourceUrl,
+      });
+    }
+
+    const payload = {
+      ...form,
+      title: form.title.trim(),
+      thumbnail: sanitizedThumbnail,
+      externalUrl: sanitizedExternalUrl,
+      tags: form.tags ? form.tags.split(',').map((t) => t.trim()).filter(Boolean) : [],
+      duration: Number(form.duration) || 0,
+      credits: Number(form.credits) || 0,
+      modules: sanitizedModules,
     };
 
     setSubmitting(true);
@@ -468,7 +573,7 @@ function CourseManagement() {
               </div>
 
               {/* Form Body */}
-              <form onSubmit={handleSubmitCourse} className="space-y-4 overflow-y-auto flex-1 pr-1">
+              <form onSubmit={handleSubmitCourse} noValidate className="space-y-4 overflow-y-auto flex-1 pr-1">
                 {formError && (
                   <div
                     className="p-3 rounded-lg text-sm mb-3"
@@ -596,21 +701,55 @@ function CourseManagement() {
                       Thumbnail Image URL
                     </label>
                     <input
-                      type="url"
+                      type="text"
                       value={form.thumbnail}
                       onChange={(e) => setForm({ ...form, thumbnail: e.target.value })}
-                      placeholder="https://..."
+                      onBlur={() => {
+                        if (form.thumbnail && form.thumbnail.trim()) {
+                          const res = sanitizeAndValidateUrl(form.thumbnail);
+                          if (res.isValid && res.sanitizedUrl !== form.thumbnail) {
+                            setForm((prev) => ({ ...prev, thumbnail: res.sanitizedUrl }));
+                          }
+                        }
+                      }}
+                      placeholder="https://example.com/image.jpg"
                       className="input-field"
                     />
+                    {form.thumbnail && (
+                      <div className="mt-2 flex items-center gap-3 p-2 rounded-md bg-slate-800/60 border border-slate-700">
+                        <img
+                          src={sanitizeAndValidateUrl(form.thumbnail).sanitizedUrl || form.thumbnail}
+                          alt="Thumbnail preview"
+                          className="h-10 w-16 object-cover rounded bg-slate-700 shrink-0"
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none';
+                            const fallback = e.currentTarget.nextSibling;
+                            if (fallback) fallback.style.display = 'inline';
+                          }}
+                        />
+                        <span style={{ display: 'none' }} className="text-xs text-amber-400">
+                          ⚠️ Unable to load image preview
+                        </span>
+                        <span className="text-xs text-slate-400">Thumbnail Preview</span>
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--color-text-muted)' }}>
                       External Resource URL
                     </label>
                     <input
-                      type="url"
+                      type="text"
                       value={form.externalUrl}
                       onChange={(e) => setForm({ ...form, externalUrl: e.target.value })}
+                      onBlur={() => {
+                        if (form.externalUrl && form.externalUrl.trim()) {
+                          const res = sanitizeAndValidateUrl(form.externalUrl);
+                          if (res.isValid && res.sanitizedUrl !== form.externalUrl) {
+                            setForm((prev) => ({ ...prev, externalUrl: res.sanitizedUrl }));
+                          }
+                        }
+                      }}
                       placeholder="https://..."
                       className="input-field"
                     />
@@ -713,10 +852,18 @@ function CourseManagement() {
                           />
 
                           <input
-                            type="url"
+                            type="text"
                             placeholder="Resource URL (optional)"
                             value={mod.resourceUrl}
                             onChange={(e) => handleModuleChange(idx, 'resourceUrl', e.target.value)}
+                            onBlur={() => {
+                              if (mod.resourceUrl && mod.resourceUrl.trim()) {
+                                const res = sanitizeAndValidateUrl(mod.resourceUrl);
+                                if (res.isValid && res.sanitizedUrl !== mod.resourceUrl) {
+                                  handleModuleChange(idx, 'resourceUrl', res.sanitizedUrl);
+                                }
+                              }
+                            }}
                             className="input-field text-xs"
                           />
                         </div>
