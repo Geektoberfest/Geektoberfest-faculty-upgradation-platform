@@ -97,4 +97,4 @@ const awardCreditsAndCheckAchievements = async (facultyId, enrollment, course) =
   return { credit, newAchievements };
 };
 
-module.exports = { awardCreditsAndCheckAchievements };
+module.exports = { awardCreditsAndCheckAchievements, ACHIEVEMENT_RULES };
